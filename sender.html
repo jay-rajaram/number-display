@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Number Sender</title>
+<title>Sender</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -12,14 +12,18 @@
     min-height: 100vh; display: flex; flex-direction: column;
     align-items: center; justify-content: center; padding: 2rem;
   }
-  h1 { font-size: 13px; font-weight: 500; color: #555; letter-spacing: 0.12em; margin-bottom: 3rem; text-transform: uppercase; }
+  h1 { font-size: 13px; font-weight: 500; color: #555; letter-spacing: 0.12em; margin-bottom: 0.5rem; text-transform: uppercase; }
+  .channel-badge {
+    font-size: 12px; color: #333; background: #1a1a1a; border: 1px solid #2a2a2a;
+    border-radius: 20px; padding: 4px 14px; margin-bottom: 2.5rem; letter-spacing: 0.06em;
+  }
+  .channel-badge span { color: #4ade80; }
   input {
-    font-size: 72px; font-weight: 700; text-align: center;
+    font-size: 64px; font-weight: 700; text-align: center;
     background: transparent; border: none; border-bottom: 2px solid #2a2a2a;
     color: #fff; width: 100%; max-width: 340px; padding: 12px 0;
-    outline: none; transition: border-color 0.2s; -moz-appearance: textfield;
+    outline: none; transition: border-color 0.2s;
   }
-  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; }
   input:focus { border-color: #fff; }
   input::placeholder { color: #2a2a2a; }
   button {
@@ -33,33 +37,67 @@
   .status { margin-top: 1.5rem; font-size: 15px; color: #444; min-height: 22px; text-align: center; }
   .status.sent { color: #4ade80; }
   .status.error { color: #f87171; }
-  .footer { position: fixed; bottom: 1.2rem; font-size: 11px; color: #252525; letter-spacing: 0.06em; text-align:center; width:100%; }
+  .hint { font-size: 12px; color: #2a2a2a; margin-top: 0.75rem; text-align: center; }
+  .setup {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #111; border-top: 1px solid #1e1e1e;
+    padding: 1rem 1.5rem; font-size: 12px; color: #333;
+  }
+  .setup label { display: block; margin-bottom: 6px; color: #444; }
+  .setup input {
+    font-size: 14px; background: #1a1a1a; border: 1px solid #2a2a2a;
+    border-bottom: 1px solid #2a2a2a; color: #888; border-radius: 8px;
+    padding: 8px 12px; width: 100%; max-width: 100%;
+  }
 </style>
 </head>
 <body>
-<h1>Send Number to Display</h1>
-<input type="number" id="numInput" placeholder="0" inputmode="numeric" autofocus />
-<button onclick="sendNumber()">Send →</button>
+<h1>Send to Display</h1>
+<div class="channel-badge">channel: <span id="chShow">—</span></div>
+<input type="text" id="msgInput" placeholder="A, B, 42…" maxlength="10" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+<div class="hint">Numbers, letters, or short words</div>
+<button onclick="sendMsg()">Send →</button>
 <div class="status" id="status"></div>
-<div class="footer" id="chLabel"></div>
+
+<div class="setup">
+  <label>Channel ID (must match receiver)</label>
+  <input type="text" id="channelInput" placeholder="e.g. myteam_42" />
+</div>
+
 <script>
-  const CHANNEL = "numdisp_abc123xyz";
-  document.getElementById("chLabel").textContent = "channel: " + CHANNEL;
-  async function sendNumber() {
-    const val = document.getElementById("numInput").value.trim();
+  // Default channel — user can override in the field below
+  const DEFAULT_CHANNEL = "numdisp_abc123xyz";
+
+  function getChannel() {
+    const v = document.getElementById("channelInput").value.trim();
+    return v || DEFAULT_CHANNEL;
+  }
+
+  // Load saved channel
+  const saved = localStorage.getItem("nd_channel");
+  if (saved) document.getElementById("channelInput").value = saved;
+  document.getElementById("chShow").textContent = getChannel();
+
+  document.getElementById("channelInput").addEventListener("input", () => {
+    const ch = getChannel();
+    document.getElementById("chShow").textContent = ch;
+    localStorage.setItem("nd_channel", ch);
+  });
+
+  async function sendMsg() {
+    const val = document.getElementById("msgInput").value.trim().toUpperCase();
     const st  = document.getElementById("status");
-    if (!val) { st.className = "status error"; st.textContent = "Enter a number first"; return; }
+    if (!val) { st.className = "status error"; st.textContent = "Enter something first"; return; }
     st.className = "status"; st.textContent = "Sending…";
     try {
-      await fetch("https://ntfy.sh/" + CHANNEL, { method: "POST", body: val, mode: "no-cors" });
+      await fetch("https://ntfy.sh/" + getChannel(), { method: "POST", body: val, mode: "no-cors" });
       st.className = "status sent"; st.textContent = "✓ Sent: " + val;
       setTimeout(() => { st.textContent = ""; }, 3000);
     } catch (e) {
       st.className = "status error"; st.textContent = "⚠ Could not send.";
-      console.error(e);
     }
   }
-  document.getElementById("numInput").addEventListener("keydown", e => { if (e.key === "Enter") sendNumber(); });
+  document.getElementById("msgInput").addEventListener("keydown", e => { if (e.key === "Enter") sendMsg(); });
 </script>
 </body>
 </html>

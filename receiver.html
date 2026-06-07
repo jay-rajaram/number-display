@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Number Display</title>
+<title>Display</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -13,60 +13,129 @@
     display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   #display {
-    font-size: min(42vw, 58vh); font-weight: 800;
+    /* Bigger: uses 90% of the shorter screen dimension */
+    font-size: min(90vw, 88vh);
+    font-weight: 800;
     letter-spacing: -0.04em; line-height: 1; color: #fff;
-    text-align: center; padding: 0 1rem;
+    text-align: center; padding: 0 0.5rem;
     transition: transform 0.15s ease, opacity 0.15s ease;
     user-select: none;
+    /* Scale down automatically for longer text */
+    display: flex; align-items: center; justify-content: center;
+    width: 100vw; height: 100vh;
+    word-break: break-all;
   }
-  #display.flash { transform: scale(1.06); opacity: 0.55; }
+  #display.flash { transform: scale(1.04); opacity: 0.5; }
   #waiting { font-size: clamp(16px, 3vw, 20px); font-weight: 400; color: #2a2a2a; letter-spacing: 0.14em; text-transform: uppercase; }
   .dot { display: inline-block; animation: blink 1.5s infinite both; }
   .dot:nth-child(2) { animation-delay: 0.25s; }
   .dot:nth-child(3) { animation-delay: 0.5s; }
   @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
-  .indicator { position: fixed; top: 1.4rem; right: 1.4rem; display: flex; align-items: center; gap: 7px; font-size: 12px; color: #333; }
-  .led { width: 8px; height: 8px; border-radius: 50%; background: #2a2a2a; }
+  .indicator { position: fixed; top: 1.2rem; right: 1.2rem; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #333; z-index:10; }
+  .led { width: 7px; height: 7px; border-radius: 50%; background: #2a2a2a; }
   .led.green { background: #4ade80; animation: pulse 2.5s infinite; }
   .led.red { background: #f87171; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .footer { position: fixed; bottom: 1.2rem; font-size: 11px; color: #1e1e1e; letter-spacing: 0.06em; }
+  /* Channel setup overlay */
+  .setup-btn {
+    position: fixed; bottom: 1rem; right: 1rem;
+    background: #1a1a1a; border: 1px solid #2a2a2a; color: #444;
+    border-radius: 8px; padding: 6px 12px; font-size: 11px; cursor: pointer; z-index:10;
+  }
+  .setup-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    align-items: center; justify-content: center; z-index: 20;
+  }
+  .setup-overlay.open { display: flex; }
+  .setup-box {
+    background: #111; border: 1px solid #2a2a2a; border-radius: 16px;
+    padding: 2rem; width: 90%; max-width: 340px;
+  }
+  .setup-box h2 { font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 1rem; }
+  .setup-box input {
+    width: 100%; font-size: 16px; background: #1a1a1a; border: 1px solid #333;
+    color: #fff; border-radius: 10px; padding: 12px; outline: none; margin-bottom: 1rem;
+  }
+  .setup-box button {
+    width: 100%; padding: 14px; background: #fff; color: #000;
+    border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
 </style>
 </head>
 <body>
 <div class="indicator"><div class="led" id="led"></div><span id="connTxt">connecting…</span></div>
-<div id="display"><span id="waiting">Waiting<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span></div>
-<div class="footer" id="chLabel"></div>
+
+<div id="display">
+  <span id="waiting">Waiting<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>
+</div>
+
+<button class="setup-btn" onclick="openSetup()">⚙ channel</button>
+
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-box">
+    <h2>Set Channel ID</h2>
+    <input type="text" id="channelInput" placeholder="e.g. myteam_42" autocomplete="off" />
+    <button onclick="saveChannel()">Connect</button>
+  </div>
+</div>
+
 <script>
-  const CHANNEL = "numdisp_abc123xyz";
-  document.getElementById("chLabel").textContent = "channel: " + CHANNEL;
+  const DEFAULT_CHANNEL = "numdisp_abc123xyz";
+  let currentChannel = localStorage.getItem("nd_channel") || DEFAULT_CHANNEL;
+  let ws = null;
+
   const led = document.getElementById("led");
   const connTxt = document.getElementById("connTxt");
+
   function setStatus(state, msg) {
     led.className = "led " + (state === "ok" ? "green" : "red");
     connTxt.textContent = msg;
     connTxt.style.color = state === "ok" ? "#4ade80" : "#f87171";
   }
-  function showNumber(num) {
+
+  function showMessage(msg) {
     const el = document.getElementById("display");
-    el.textContent = num;
+    // Auto-scale font for longer strings
+    const len = msg.length;
+    if (len === 1)      el.style.fontSize = "min(90vw, 88vh)";
+    else if (len === 2) el.style.fontSize = "min(80vw, 78vh)";
+    else if (len === 3) el.style.fontSize = "min(60vw, 58vh)";
+    else                el.style.fontSize = "min(40vw, 38vh)";
+    el.textContent = msg;
     el.classList.add("flash");
     setTimeout(() => el.classList.remove("flash"), 200);
   }
-  function connect() {
+
+  function connect(channel) {
+    if (ws) { ws.onclose = null; ws.close(); }
     setStatus("connecting", "connecting…");
-    const ws = new WebSocket("wss://ntfy.sh/" + CHANNEL + "/ws");
-    ws.onopen = () => setStatus("ok", "live ●");
+    ws = new WebSocket("wss://ntfy.sh/" + channel + "/ws");
+    ws.onopen = () => setStatus("ok", channel);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.event === "message" && data.message) showNumber(data.message);
-      } catch(e) { console.warn(e); }
+        if (data.event === "message" && data.message) showMessage(data.message);
+      } catch(e) {}
     };
     ws.onerror = () => setStatus("error", "error");
-    ws.onclose = () => { setStatus("error", "reconnecting…"); setTimeout(connect, 3000); };
+    ws.onclose = () => { setStatus("error", "reconnecting…"); setTimeout(() => connect(currentChannel), 3000); };
   }
-  connect();
+
+  function openSetup() {
+    document.getElementById("channelInput").value = currentChannel;
+    document.getElementById("setupOverlay").classList.add("open");
+  }
+
+  function saveChannel() {
+    const v = document.getElementById("channelInput").value.trim();
+    if (!v) return;
+    currentChannel = v;
+    localStorage.setItem("nd_channel", v);
+    document.getElementById("setupOverlay").classList.remove("open");
+    connect(currentChannel);
+  }
+
+  connect(currentChannel);
 </script>
 </body>
 </html>
