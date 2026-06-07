@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Number Display</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f0f; color: #fff;
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  #display {
+    font-size: min(42vw, 58vh); font-weight: 800;
+    letter-spacing: -0.04em; line-height: 1; color: #fff;
+    text-align: center; padding: 0 1rem;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    user-select: none;
+  }
+  #display.flash { transform: scale(1.06); opacity: 0.55; }
+  #waiting { font-size: clamp(16px, 3vw, 20px); font-weight: 400; color: #2a2a2a; letter-spacing: 0.14em; text-transform: uppercase; }
+  .dot { display: inline-block; animation: blink 1.5s infinite both; }
+  .dot:nth-child(2) { animation-delay: 0.25s; }
+  .dot:nth-child(3) { animation-delay: 0.5s; }
+  @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
+  .indicator { position: fixed; top: 1.4rem; right: 1.4rem; display: flex; align-items: center; gap: 7px; font-size: 12px; color: #333; }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: #2a2a2a; }
+  .led.green { background: #4ade80; animation: pulse 2.5s infinite; }
+  .led.red { background: #f87171; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .footer { position: fixed; bottom: 1.2rem; font-size: 11px; color: #1e1e1e; letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<div class="indicator"><div class="led" id="led"></div><span id="connTxt">connecting…</span></div>
+<div id="display"><span id="waiting">Waiting<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span></div>
+<div class="footer" id="chLabel"></div>
+<script>
+  const CHANNEL = "numdisp_abc123xyz";
+  document.getElementById("chLabel").textContent = "channel: " + CHANNEL;
+  const led = document.getElementById("led");
+  const connTxt = document.getElementById("connTxt");
+  function setStatus(state, msg) {
+    led.className = "led " + (state === "ok" ? "green" : "red");
+    connTxt.textContent = msg;
+    connTxt.style.color = state === "ok" ? "#4ade80" : "#f87171";
+  }
+  function showNumber(num) {
+    const el = document.getElementById("display");
+    el.textContent = num;
+    el.classList.add("flash");
+    setTimeout(() => el.classList.remove("flash"), 200);
+  }
+  function connect() {
+    setStatus("connecting", "connecting…");
+    const ws = new WebSocket("wss://ntfy.sh/" + CHANNEL + "/ws");
+    ws.onopen = () => setStatus("ok", "live ●");
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.event === "message" && data.message) showNumber(data.message);
+      } catch(e) { console.warn(e); }
+    };
+    ws.onerror = () => setStatus("error", "error");
+    ws.onclose = () => { setStatus("error", "reconnecting…"); setTimeout(connect, 3000); };
+  }
+  connect();
+</script>
+</body>
+</html>
